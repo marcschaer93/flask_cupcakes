@@ -9,24 +9,8 @@ app.config['SQLALCHEMY_ECHO'] = False
 
 # Make Flask errors be real errors, rather than HTML pages with error info
 app.config['TESTING'] = True
-
-db.drop_all()
-db.create_all()
-
-
-CUPCAKE_DATA = {
-    "flavor": "TestFlavor",
-    "size": "TestSize",
-    "rating": 5,
-    "image": "http://test.com/cupcake.jpg"
-}
-
-CUPCAKE_DATA_2 = {
-    "flavor": "TestFlavor2",
-    "size": "TestSize2",
-    "rating": 10,
-    "image": "http://test.com/cupcake2.jpg"
-}
+# This is a bit of hack, but don't use Flask DebugToolbar
+app.config['DEBUG_TB_HOSTS'] = ['dont-show-debug-toolbar']
 
 
 class CupcakeViewsTestCase(TestCase):
@@ -35,59 +19,79 @@ class CupcakeViewsTestCase(TestCase):
     def setUp(self):
         """Make demo data."""
 
-        Cupcake.query.delete()
-
-        cupcake = Cupcake(**CUPCAKE_DATA)
-        db.session.add(cupcake)
-        db.session.commit()
-
-        self.cupcake = cupcake
+        with app.app_context():
+            db.drop_all()
+            db.create_all()
+            c1 = Cupcake(flavor='chocolate', size='large', rating=4, image= "<http://test.com/cupcake.jpg>")
+            c2 = Cupcake(flavor='vanilla', size='medium', rating=3, image= "<http://test.com/cupcake.jpg>")
+            db.session.add_all([c1, c2])
+            db.session.commit()
 
     def tearDown(self):
         """Clean up fouled transactions."""
+        with app.app_context():
+            db.session.rollback()
 
-        db.session.rollback()
 
     def test_list_cupcakes(self):
-        with app.test_client() as client:
-            resp = client.get("/api/cupcakes")
+        with app.app_context():
+            #session
+            session = db.session
+            cupcakes = session.query(Cupcake).all()
+            self.assertEqual(len(cupcakes), 2)
 
-            self.assertEqual(resp.status_code, 200)
+            with app.test_client() as client:
+                resp = client.get("/api/cupcakes")
 
-            data = resp.json
-            self.assertEqual(data, {
-                "cupcakes": [
-                    {
-                        "id": self.cupcake.id,
-                        "flavor": "TestFlavor",
-                        "size": "TestSize",
-                        "rating": 5,
-                        "image": "http://test.com/cupcake.jpg"
-                    }
-                ]
-            })
+                self.assertEqual(resp.status_code, 200)
+
+                data = resp.json
+                self.assertEqual(data, {
+                    "cupcakes": [
+                        {
+                            "id": cupcakes[0].id,
+                            "flavor": "chocolate",
+                            "size": "large",
+                            "rating": 4,
+                            "image": "<http://test.com/cupcake.jpg>"
+                        },
+                        {
+                            "id": cupcakes[1].id,
+                            "flavor": "vanilla",
+                            "size": "medium",
+                            "rating": 3,
+                            "image": "<http://test.com/cupcake.jpg>"
+                        }
+                    ]
+                })
+
 
     def test_get_cupcake(self):
+        with app.app_context():
+            session = db.session
+            cupcake = session.query(Cupcake).first()
+
         with app.test_client() as client:
-            url = f"/api/cupcakes/{self.cupcake.id}"
+            url = f"/api/cupcakes/{cupcake.id}"
             resp = client.get(url)
 
             self.assertEqual(resp.status_code, 200)
             data = resp.json
             self.assertEqual(data, {
                 "cupcake": {
-                    "id": self.cupcake.id,
-                    "flavor": "TestFlavor",
-                    "size": "TestSize",
-                    "rating": 5,
-                    "image": "http://test.com/cupcake.jpg"
+                    "id": cupcake.id,
+                    "flavor": "chocolate",
+                    "size": "large",
+                    "rating": 4,
+                    "image": "<http://test.com/cupcake.jpg>"
                 }
             })
 
     def test_create_cupcake(self):
         with app.test_client() as client:
+            c3 = Cupcake(flavor='berry', size='large', rating=8, image= "<http://test.com/cupcake.jpg>")
             url = "/api/cupcakes"
-            resp = client.post(url, json=CUPCAKE_DATA_2)
+            resp = client.post(url, json=c3.serialize())
 
             self.assertEqual(resp.status_code, 201)
 
@@ -99,11 +103,55 @@ class CupcakeViewsTestCase(TestCase):
 
             self.assertEqual(data, {
                 "cupcake": {
-                    "flavor": "TestFlavor2",
-                    "size": "TestSize2",
-                    "rating": 10,
-                    "image": "http://test.com/cupcake2.jpg"
+                    "flavor": "berry",
+                    "size": "large",
+                    "rating": 8,
+                    "image": "<http://test.com/cupcake.jpg>"
+                }
+            })
+
+            self.assertEqual(Cupcake.query.count(), 3)
+
+    def test_update_cupcake(self):
+        with app.app_context():
+            session = db.session
+            cupcake = session.query(Cupcake).first()
+
+        with app.test_client() as client:
+            url = f"/api/cupcakes/{cupcake.id}"
+            resp = client.patch(url, json={"flavor": "new-flavor"})
+
+            self.assertEqual(resp.status_code, 200)
+
+            data = resp.json
+            self.assertEqual(data, {
+                "cupcake": {
+                    "id": cupcake.id,
+                    "flavor": "new-flavor",
+                    "size": "large",
+                    "rating": 4,
+                    "image": "<http://test.com/cupcake.jpg>"
                 }
             })
 
             self.assertEqual(Cupcake.query.count(), 2)
+
+    def delete_cupcake(self):
+        with app.app_context():
+            session = db.session
+            cupcake = session.query(Cupcake).first()
+            
+        with app.test_client() as client:
+            url = f"/api/cupcakes/{cupcake.id}"
+            resp = client.delete(url)
+
+            self.assertEqual(resp.status_code, 200)
+
+            data = resp.json
+            self.assertEqual(data, {"message": "Deleted"})
+
+            self.assertEqual(Cupcake.query.count(), 1)
+
+
+
+  
