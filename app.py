@@ -23,7 +23,6 @@ debug = DebugToolbarExtension(app)
 # connect to DATABASE
 connect_db(app)
 
-
 with app.app_context():
     db.drop_all()
     db.create_all()
@@ -99,10 +98,3 @@ def delete_cupcake(id):
     db.session.delete(cupcake)
     db.session.commit()
     return jsonify(message="Deleted")
-
-
-
-
-
-
-

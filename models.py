@@ -1,8 +1,6 @@
 """Models for Cupcake app."""
-
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
-
 
 # Initialize the database
 db = SQLAlchemy()

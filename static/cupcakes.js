@@ -1,5 +1,6 @@
 const BASE_URL = "http://localhost:5000/api";
 
+// Generate HTML for a cupcake
 function generateCupcakeHTML(cupcake) {
     return `
     <div data-cupcake-id=${cupcake.id}>
@@ -14,7 +15,7 @@ function generateCupcakeHTML(cupcake) {
     `;
 }
 
-// Get all cupcakes
+// Get all cupcakes and append to list
 async function getCupcakes() {
     const response = await axios.get(`${BASE_URL}/cupcakes`);
     console.log(response.data.cupcakes)
@@ -35,4 +36,5 @@ async function getCupcakes() {
   });
 
 
+// Initialize all Cupcakes
 $(getCupcakes);
